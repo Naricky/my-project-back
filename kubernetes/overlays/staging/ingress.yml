@@ -1,0 +1,27 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: rl
+  annotations:
+    # nginx ingress
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    # cert-manager
+    ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: clusterissuer-letsencrypt-production
+    # external-dns
+    external-dns.alpha.kubernetes.io/hostname: backend.rickylee-development.com
+
+spec:
+  rules:
+  - host: backend.rickylee-development.com
+    http:
+      paths:
+        - path: /(.*)
+          backend:
+            serviceName: rl
+            servicePort: http
+  tls:
+  - hosts:
+    - backend.rickylee-development.com
+    secretName: rl-tls-secret

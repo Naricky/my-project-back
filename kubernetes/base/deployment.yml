@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rl
+spec:
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: rl
+  template:
+    spec:
+      containers:
+        - name: rl
+          image: fake-image
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 0.1
+            limits:
+              memory: 256Mi
+              cpu: 0.5
+          livenessProbe:
+            exec:
+              command:
+              - rm
+              - /tmp/service-alive
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              port: http
+              path: /status/ready
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+          ports:
+            - containerPort: 80
+              name: http
+          envFrom:
+          - configMapRef:
+              name: rl-config
+          env:
+          - name: SERVER_PORT
+            value: "80"
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: DATABASE_USERNAME
+            valueFrom:
+                secretKeyRef:
+                  name: rl
+                  key: DATABASE_USERNAME
+          - name: DATABASE_PASSWORD
+            valueFrom:
+                secretKeyRef:
+                  name: rl
+                  key: DATABASE_PASSWORD
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rl
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rl
+  maxReplicas: 2
+  minReplicas: 1
+  targetCPUUtilizationPercentage: 60
