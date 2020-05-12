@@ -18,6 +18,32 @@ import (
 
 const gracefulShutdownTimeout = 10 * time.Second
 
+type Scores struct {
+	DevOps int
+	Fe     int
+	Be     int
+}
+
+type Company struct {
+	Scores Scores
+	Name   string
+}
+
+var list_of_companies = []Company{
+	{
+		Scores: Scores{1, 1, 1},
+		Name:   "EARLY LTD",
+	},
+	{
+		Scores: Scores{3, 3, 3},
+		Name:   "INT LTD",
+	},
+	{
+		Scores: Scores{1, 1, 1},
+		Name:   "EXPERT LTD",
+	},
+}
+
 func main() {
 	go heartbeat()
 
@@ -26,13 +52,30 @@ func main() {
 
 	// Something for the example frontend to hit
 	r.HandleFunc("/status/about", func(w http.ResponseWriter, r *http.Request) {
+
 		response, err := json.Marshal(map[string]string{"podName": os.Getenv("POD_NAME")})
 		if err == nil {
+
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(response)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+	})
+
+	r.HandleFunc("/analysis", func(w http.ResponseWriter, r *http.Request) {
+		var scores Scores
+
+		err := json.NewDecoder(r.Body).Decode(&scores)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		fmt.Println(list_of_companies)
+		// Call db ( Mimic with json for now )
+		// Cosine Similarity
+		// Respond with company info
 	})
 
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -41,8 +84,10 @@ func main() {
 
 	// Change this to a more strict CORS policy
 	handler := cors.Default().Handler(r)
-
-	serverAddress := fmt.Sprintf("0.0.0.0:%s", os.Getenv("SERVER_PORT"))
+	//NOTE: ACTIVATE BELOW FOR STAGING/PROD
+	// serverAddress := fmt.Sprintf("0.0.0.0:%s", os.Getenv("SERVER_PORT"))
+	//NOTE: ACTIVATE BELOW FOR DEVELOPMENT
+	serverAddress := fmt.Sprintf("localhost:%s", "8080")
 	server := &http.Server{Addr: serverAddress, Handler: handler}
 
 	// Watch for signals to handle graceful shutdown
@@ -89,4 +134,3 @@ func heartbeat() {
 		}
 	}
 }
-/// Fixing CICD...
