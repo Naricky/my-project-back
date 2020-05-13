@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
@@ -21,6 +22,14 @@ import (
 
 const gracefulShutdownTimeout = 10 * time.Second
 
+type RawCompany struct {
+	Id     float64 `json: "id"`
+	Name   string  `json: "name"`
+	Devops float64 `json: "devops"`
+	Fe     float64 `json: "fe"`
+	Be     float64 `json: "be"`
+}
+
 type Company struct {
 	Scores []float64
 	Name   string
@@ -31,21 +40,6 @@ type EpScores struct {
 	DevOpsScore float64
 	FeScore     float64
 	BeScore     float64
-}
-
-var Companies = []Company{
-	{
-		Scores: []float64{8, 13, 14},
-		Name:   "EARLY LTD",
-	},
-	{
-		Scores: []float64{12, 17, 21},
-		Name:   "INT LTD",
-	},
-	{
-		Scores: []float64{17, 11, 24},
-		Name:   "EXPERT LTD",
-	},
 }
 
 func main() {
@@ -68,44 +62,67 @@ func main() {
 	})
 
 	r.HandleFunc("/analysis", func(w http.ResponseWriter, r *http.Request) {
+
+		// Read from JSON (TODO: Replace with db call if db is being used)
+		data, err := ioutil.ReadFile("MOCK_DATA.json")
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		var rawCompanies []RawCompany
+		err = json.Unmarshal(data, &rawCompanies)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		// Read from request for Ep Scores
 		var EpScores EpScores
-		fmt.Println("@@@@", EpScores)
-		err := json.NewDecoder(r.Body).Decode(&EpScores)
+		err = json.NewDecoder(r.Body).Decode(&EpScores)
 		if err != nil {
 
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
+		// Convert to Ep Scores in to float
 		EpScoresFloat := []float64{
 			EpScores.DevOpsScore,
 			EpScores.FeScore,
 			EpScores.BeScore}
 
-		var CompanyRankPayload []Company
+		//Change Raw Company struct in to format desirable for cosine similarity
+		var companies []Company
+		for _, company := range rawCompanies {
+			scores := make([]float64, 3)
+			scores[0], scores[1], scores[2] = company.Devops, company.Fe, company.Be
 
-		fmt.Println("Ep Scores are gathered... to cosine smilarlities")
-		for _, company := range Companies {
+			companyFixed := Company{
+				Scores: scores,
+				Name:   company.Name,
+				CosSim: 0,
+			}
+			companies = append(companies, companyFixed)
+		}
+
+		// Calculate Cosine Similarity, sort them in highest to lowest value order
+		var CompanyRankPayload []Company
+		for _, company := range companies {
 			score := company.Scores
 			cos, err := Cosine(score, EpScoresFloat)
 			if err != nil {
 				log.Fatalf("error: %v\n", err)
 			}
-			companyCosineScore := Company{
+			cosineScore := Company{
 				Scores: company.Scores,
 				Name:   company.Name,
 				CosSim: cos,
 			}
-			CompanyRankPayload = append(CompanyRankPayload, companyCosineScore)
-
+			CompanyRankPayload = append(CompanyRankPayload, cosineScore)
 		}
-
 		sort.Slice(CompanyRankPayload, func(i, j int) bool {
 			return CompanyRankPayload[i].CosSim > CompanyRankPayload[j].CosSim
 		})
-		fmt.Println("!!!!!!!!!!!!", CompanyRankPayload)
-		// cos gives result of cosine similarlities. Use index to resort the slice
-		// return each name and value of company
 	})
 
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
