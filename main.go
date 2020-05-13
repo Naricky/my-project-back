@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"syscall"
 	"time"
@@ -18,28 +21,29 @@ import (
 
 const gracefulShutdownTimeout = 10 * time.Second
 
-type Scores struct {
-	DevOps int
-	Fe     int
-	Be     int
-}
-
 type Company struct {
-	Scores Scores
+	Scores []float64
 	Name   string
+	CosSim float64
 }
 
-var list_of_companies = []Company{
+type EpScores struct {
+	DevOpsScore float64
+	FeScore     float64
+	BeScore     float64
+}
+
+var Companies = []Company{
 	{
-		Scores: Scores{1, 1, 1},
+		Scores: []float64{8, 13, 14},
 		Name:   "EARLY LTD",
 	},
 	{
-		Scores: Scores{3, 3, 3},
+		Scores: []float64{12, 17, 21},
 		Name:   "INT LTD",
 	},
 	{
-		Scores: Scores{1, 1, 1},
+		Scores: []float64{17, 11, 24},
 		Name:   "EXPERT LTD",
 	},
 }
@@ -64,18 +68,44 @@ func main() {
 	})
 
 	r.HandleFunc("/analysis", func(w http.ResponseWriter, r *http.Request) {
-		var scores Scores
-
-		err := json.NewDecoder(r.Body).Decode(&scores)
+		var EpScores EpScores
+		fmt.Println("@@@@", EpScores)
+		err := json.NewDecoder(r.Body).Decode(&EpScores)
 		if err != nil {
+
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		fmt.Println(list_of_companies)
-		// Call db ( Mimic with json for now )
-		// Cosine Similarity
-		// Respond with company info
+		EpScoresFloat := []float64{
+			EpScores.DevOpsScore,
+			EpScores.FeScore,
+			EpScores.BeScore}
+
+		var CompanyRankPayload []Company
+
+		fmt.Println("Ep Scores are gathered... to cosine smilarlities")
+		for _, company := range Companies {
+			score := company.Scores
+			cos, err := Cosine(score, EpScoresFloat)
+			if err != nil {
+				log.Fatalf("error: %v\n", err)
+			}
+			companyCosineScore := Company{
+				Scores: company.Scores,
+				Name:   company.Name,
+				CosSim: cos,
+			}
+			CompanyRankPayload = append(CompanyRankPayload, companyCosineScore)
+
+		}
+
+		sort.Slice(CompanyRankPayload, func(i, j int) bool {
+			return CompanyRankPayload[i].CosSim > CompanyRankPayload[j].CosSim
+		})
+		fmt.Println("!!!!!!!!!!!!", CompanyRankPayload)
+		// cos gives result of cosine similarlities. Use index to resort the slice
+		// return each name and value of company
 	})
 
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -133,4 +163,35 @@ func heartbeat() {
 			fh.Close()
 		}
 	}
+}
+
+func Cosine(a []float64, b []float64) (cosine float64, err error) {
+	count := 0
+	length_a := len(a)
+	length_b := len(b)
+	if length_a > length_b {
+		count = length_a
+	} else {
+		count = length_b
+	}
+	sumA := 0.0
+	s1 := 0.0
+	s2 := 0.0
+	for k := 0; k < count; k++ {
+		if k >= length_a {
+			s2 += math.Pow(b[k], 2)
+			continue
+		}
+		if k >= length_b {
+			s1 += math.Pow(a[k], 2)
+			continue
+		}
+		sumA += a[k] * b[k]
+		s1 += math.Pow(a[k], 2)
+		s2 += math.Pow(b[k], 2)
+	}
+	if s1 == 0 || s2 == 0 {
+		return 0.0, errors.New("Vectors should not be null (all zeros)")
+	}
+	return sumA / (math.Sqrt(s1) * math.Sqrt(s2)), nil
 }
