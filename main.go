@@ -123,6 +123,8 @@ func main() {
 		sort.Slice(CompanyRankPayload, func(i, j int) bool {
 			return CompanyRankPayload[i].CosSim > CompanyRankPayload[j].CosSim
 		})
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(CompanyRankPayload)
 	})
 
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
